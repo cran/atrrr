@@ -1,0 +1,232 @@
+---
+title: "Basic Usage"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Basic_Usage}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "figures/",
+  message = FALSE,
+  out.width = "100%",
+  fig.width = 7,
+  fig.height = 4
+)
+```
+
+# Introduction
+
+
+Welcome to the `atrrr` vignette! This guide will delve deeper into the functionalities offered by the package-
+
+Before diving in, let's clarify some terminology. In the context of Blue Sky, a post is referred to as a "skeet." So, when we mention retrieving or working with "skeets," we are talking about individual posts made on Blue Sky.
+
+Now, let's delve deeper into the functionalities that allow users to interact with skeets, followers, and their descriptions.
+
+## Installation
+
+If you haven't done so, you can install the development version of atrrr like so (`pak` works similar to `remotes` here, but it's what the cool kids use now :grin:):
+
+``` r
+# install.packages("pak")
+pak::pak("JBGruber/atrrr")
+```
+
+
+## Load the package
+
+```{r setup}
+library(atrrr)
+```
+
+## Authentication
+
+The first time you make a request, you will be prompted automatically to enter your user handle and an app password to authenticate `atrrr` to communicate with BlueSky for you.
+
+![RStudio Popup](figures/password_popup.png)
+
+The page to generate app passwords is also automatically opened for you.
+
+![page to create new app passwords](figures/app_password.png)
+
+However, you can also trigger this process manually:
+
+```{r eval=FALSE}
+auth("jbgruber.bsky.social")
+```
+
+This can be useful if you want to replace an old token as it is permanently stored encrypted on disk.
+
+# Searching Posts
+
+The AT protocol defines a search function at `app.bsky.feed.searchPosts`, however, it is not currently active, as far as we could tell.
+
+As soon as the functionality is added by BlueSky, we will implement it here.
+
+
+# Blue Sky Users and Skeets
+
+
+## Retrieve user info (`get_user_info`)
+
+A good starting point is understanding a user's digital footprint on the platform. The get_user_info function becomes our handy tool, fetching an array of information about a user. All you need? Their handle!
+
+
+```{r}
+get_user_info(actor = "atpr.bsky.social")  |>
+  dplyr::glimpse()
+```
+
+This function gives us counts of followers, follows, posts for each user.
+
+You can also retrieve information for multiple users by providing a vector of user handles:
+
+```{r}
+get_user_info(actor = c("benguinaudeau.bsky.social", "atpr.bsky.social"))  |>
+  dplyr::glimpse()
+```
+
+
+## Retrieve Skeets (`get_skeets_authored_by`)
+
+To fetch all the skeets by a specific user, use the `get_skeets_authored_by` function. *Note this also includes quote skeets and reskeets.* You can also opt not to parse the result by setting `parse = FALSE`, however it is recommended to use the default parse option which results in a (more) tidy tibble.
+
+```{r}
+get_skeets_authored_by(actor = "benguinaudeau.bsky.social", parse = TRUE) |>
+  dplyr::glimpse()
+```
+
+Feeling adventurous? Increase the `limit` and explore more of their content.
+
+```{r}
+get_skeets_authored_by(actor = "favstats.bsky.social", limit = 30) |>
+  dplyr::glimpse()
+```
+
+
+## Who liked your Skeets?
+
+The get_likes function allows you to extract detailed information about users who liked a specific post. By simply providing the post's URL, you can get a list of users who expressed their appreciation for the content.
+
+
+
+```{r}
+get_likes("https://bsky.app/profile/ryanlcooper.com/post/3kb42gayda52t")  |>
+  dplyr::glimpse()
+```
+
+## Who reposted your Skeets?
+
+Reposts (or reskeets), akin to retweets on platforms like Twitter, amplify the reach of content by sharing it with a wider audience.
+
+The `get_reposts` function is designed to retrieve information about users who reposted a specific piece of content.
+
+```{r}
+get_reposts(post_url = "https://bsky.app/profile/ryanlcooper.com/post/3kb42gayda52t")  |>
+  dplyr::glimpse()
+```
+
+
+
+# Exploring Connections: Get Followers and Follows
+
+You can retrieve a list of followers and those followed by a user through the `get_followers` and `get_follows` functions, respectively. This gives a glimpse of their social dynamics on the platform.
+
+## `get_followers`
+
+```{r}
+get_followers(actor = "benguinaudeau.bsky.social", limit = 200)  |>
+  dplyr::glimpse()
+```
+
+
+## `get_follows`
+
+```{r}
+atrrr:::get_follows(actor = "benguinaudeau.bsky.social", limit = 200)  |>
+  dplyr::glimpse()
+```
+
+You'll notice each follower/following has a description (i.e. their bio). It's a nifty way to get to know a bit about them at a glance!
+
+
+## Follower Network Visualization
+
+This section guides you through the process of visualizing a follower network for a given user on Blue Sky. The primary focus is on the "skeets" (posts) and the interconnected relationships among followers.
+
+The first step is to load some additional packages. Then we get the followers for the main user we are interested in. We will then delve deeper and fetch the followers for each of these followers.
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(igraph)
+library(ggraph)
+library(tidygraph)
+
+# Retrieve the followers for the main user
+some_followers <- get_followers(actor = "benguinaudeau.bsky.social", limit = 10)$handle
+
+# For each follower, retrieve their own set of followers.
+# This provides a nested view of relationships.
+followers_of_followers <- some_followers |>
+  purrr::map_dfr(~{
+    get_followers(actor = .x, limit = 200) |>
+    mutate(from = .x)
+  }) |>
+  dplyr::rename(to = handle) |>
+  dplyr::select(from, to)
+```
+
+
+## Building and Visualizing the Follower Network
+
+```{r, fig.cap="Follower Network"}
+# Construct the network graph and plot
+graph <- igraph::graph_from_data_frame(followers_of_followers, directed = TRUE)
+
+# Use ggraph to visualize the network.
+ggraph::ggraph(graph, layout = "kk") +
+  ggraph::geom_edge_link() +
+  ggraph::geom_node_point(aes(size = tidygraph::centrality_pagerank())) +
+  ggplot2::theme_void()
+```
+
+
+## Find people to follow
+
+You can use a similar approach to find new people you might want to follow.
+First get all the people you already follow by quering your own account:
+
+```{r}
+my_follows <- get_follows(actor = "jbgruber.bsky.social",
+                              limit = 10)$handle # limit only for demonstration
+
+# For each account you follow, retrieve who they follow.
+follows_of_follows <- my_follows |>
+  purrr::map_dfr(~{
+    get_followers(actor = .x, limit = 100) |>
+      mutate(from = .x)
+  })
+
+# Now we can check which accounts are popular among the people you already follow
+follows_of_follows |>
+  dplyr::filter(!handle %in% my_follows) |> # exclude accounts you already follow
+  dplyr::count(display_name, handle, sort = TRUE)
+```
+
+The original account shows up in this overview, as do accounts that were excluded because of the limit set to do the demonstration.
+
+But all of these accounts look intresting!
+
+
+
+
+<!-- ### Eventual temporal structure -->

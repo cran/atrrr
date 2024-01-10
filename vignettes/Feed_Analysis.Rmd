@@ -1,0 +1,150 @@
+---
+title: "Feed Analysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Feed_Analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+
+
+
+
+
+# Analyzing Feeds on Blue Sky
+
+On Blue Sky users have the ability to create custom feeds based on specific keywords. These feeds aggregate content, for instance, a user might create a feed around the hashtag `#rstats` to gather all relevant content about. Let's delve into the dynamics of such feeds created by users.
+
+## Load the package
+
+
+```r
+library(atrrr)
+```
+
+## Retrieving a Feed
+
+Our starting point is to extract the posts from a feed. We're focusing on a feed curated by "andrew.heiss.phd".
+
+
+
+```r
+# Fetching the feed posts
+feeds <- get_feeds_created_by(actor = "andrew.heiss.phd") |>
+  dplyr::glimpse()
+#> Rows: 4
+#> Columns: 20
+#> $ uri                       <chr> "at://did:plc:2zcfjz…
+#> $ cid                       <chr> "bafyreicvjczzxxhrkr…
+#> $ did                       <chr> "did:web:skyfeed.me"…
+#> $ creator_did               <chr> "did:plc:2zcfjzyocp6…
+#> $ creator_handle            <chr> "andrew.heiss.phd", …
+#> $ creator_displayName       <chr> "Andrew Heiss (🎄fes…
+#> $ creator_description       <chr> "Assistant professor…
+#> $ creator_avatar            <chr> "https://cdn.bsky.ap…
+#> $ creator_indexedAt         <chr> "2023-11-26T17:07:49…
+#> $ creator_viewer_muted      <lgl> FALSE, FALSE, FALSE,…
+#> $ creator_viewer_blockedBy  <lgl> FALSE, FALSE, FALSE,…
+#> $ creator_viewer_following  <chr> "at://did:plc:ntd53a…
+#> $ creator_viewer_followedBy <chr> "at://did:plc:2zcfjz…
+#> $ displayName               <chr> "Public Admin/Policy…
+#> $ description               <chr> "A feed for public a…
+#> $ avatar                    <chr> "https://cdn.bsky.ap…
+#> $ likeCount                 <int> 80, 19, 0, 94
+#> $ indexedAt                 <chr> "2023-09-21T01:37:55…
+#> $ created_at                <dttm> 2023-09-21 01:37:55,…
+#> $ viewer_like               <chr> NA, NA, NA, "at://d…
+
+# Filtering for a specific keyword, for example "#rstats"
+rstat_feed <- feeds |>
+  filter(displayName == "#rstats")
+
+# Extracting posts from this curated feed
+rstat_posts <- get_feed(rstat_feed$uri, limit = 200) |>
+  dplyr::glimpse()
+#> Rows: 79
+#> Columns: 15
+#> $ uri           <chr> "at://did:plc:kizxn77jkp4p5vqzap…
+#> $ cid           <chr> "bafyreiaabdszn3z7ka5c5zm2e2ufkj…
+#> $ author_handle <chr> "pmaier1971.bsky.social", "pmaie…
+#> $ author_name   <chr> "Philipp Maier", "Philipp Maier"…
+#> $ text          <chr> "US #HouseholdDebt in Jul 2023 a…
+#> $ author_data   <list> ["did:plc:kizxn77jkp4p5vqzapbed…
+#> $ post_data     <list> ["US #HouseholdDebt in Jul 2023…
+#> $ embed_data    <list> ["app.bsky.embed.images#view", …
+#> $ reply_count   <int> 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0,…
+#> $ repost_count  <int> 0, 0, 0, 2, 0, 0, 4, 3, 0, 0, 0,…
+#> $ like_count    <int> 0, 0, 7, 2, 5, 11, 2, 9, 0, 0, 0…
+#> $ indexed_at    <dttm> 2024-01-02 13:17:27, 2024-01-02…
+#> $ in_reply_to   <chr> NA, NA, NA, NA, NA, NA, NA, NA, …
+#> $ in_reply_root <chr> NA, NA, NA, NA, NA, NA, NA, NA, …
+#> $ quotes        <chr> NA, NA, NA, NA, NA, NA, NA, NA, …
+```
+
+
+## Identifying Top Contributors
+
+Who are the leading voices within a particular topic? This analysis highlights users who are frequently contributing to the `#rstats` feed.
+
+
+
+```r
+library(ggplot2)
+
+# Identifying the top 10 contributors
+rstat_posts |>
+  count(handle = author_handle, sort = T) |>
+  slice(1:10) |>
+  mutate(handle = forcats::fct_reorder(handle, n)) |>
+  ggplot(aes(handle, n)) +
+  geom_col() +
+  coord_flip() +
+  theme_minimal()
+```
+
+<img src="figures/unnamed-chunk-3-1.png" alt="Top 10 #rstats contributors" width="100%" />
+
+
+### Recognizing Influential Voices
+
+Volume doesn't always translate to influence. Some users may post less frequently but their contributions resonate deeply with the community.
+
+
+```r
+# Identifying top 10 influential voices based on likes
+rstat_posts |>
+  group_by(author_handle) |>
+  summarize(like_count = sum(like_count)) |>
+  ungroup() |>
+  arrange(desc(like_count)) |>
+  slice(1:10) |>
+  mutate(handle = forcats::fct_reorder(author_handle, like_count)) |>
+  ggplot(aes(handle, like_count)) +
+  geom_col() +
+  coord_flip() +
+  theme_minimal()
+```
+
+<img src="figures/unnamed-chunk-4-1.png" alt="Top 10 #rstats contributors based on likes" width="100%" />
+
+
+### Most Famous #rstats skeet
+
+
+```r
+# Finding the standout post in the rstats feed
+rstat_posts |>
+  mutate(total_interactions = reply_count + repost_count + like_count) |>
+  arrange(desc(total_interactions)) |>
+  slice(1) |>
+  select(author_handle, total_interactions, text) |>
+  dplyr::glimpse() |>
+  pull(text)
+#> Rows: 1
+#> Columns: 3
+#> $ author_handle      <chr> "adamkuczynski.bsky.social"
+#> $ total_interactions <int> 69
+#> $ text               <chr> "How do we measure experien…
+#> [1] "How do we measure experiences of loneliness in daily life? A thread for clinical psychologists, relationship scientists, EMA nerds, and measurement geeks 🧵👇\n\nPreregistration, data, analysis scripts, and materials at osf.io/cwgme/.\n\n#psychscisky #rstats #statssky"
+```

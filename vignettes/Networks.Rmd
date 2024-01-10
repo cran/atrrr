@@ -1,0 +1,221 @@
+---
+title: "Networks"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Networks}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+
+
+
+
+
+# Get Followers and Follows
+
+You can retrieve a list of followers and those followed by a user through the `get_followers` and `get_follows` functions, respectively. This gives a glimpse of their social dynamics on the platform.
+
+
+## Load the package
+
+
+```r
+library(atrrr)
+```
+
+## `get_followers`
+
+Retrieve the followers of a specific account with `get_followers`:
+
+
+```r
+get_followers(actor = "benguinaudeau.bsky.social", limit = 200)  |>
+  dplyr::glimpse()
+#> Rows: 220
+#> Columns: 11
+#> $ did                <chr> "did:plc:w2gsbanugiw67kud7sieilh7", "did:plc:b…
+#> $ handle             <chr> "mattgraham.bsky.social", "janvogler.bsky.soci…
+#> $ display_name       <chr> "Matt Graham", "Jan P. Vogler", "Stéphane Hube…
+#> $ description        <chr> "Political Scientist. Beliefs, polarization, d…
+#> $ avatar             <chr> "https://cdn.bsky.app/img/avatar/plain/did:plc…
+#> $ indexed_at         <chr> "2023-07-31T20:08:07.007Z", "2023-12-27T16:23:…
+#> $ viewer_muted       <lgl> FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALS…
+#> $ viewer_blocked_by  <lgl> FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALS…
+#> $ labels             <named list> <NULL>, <NULL>, <NULL>, <NULL>, <NULL>,…
+#> $ viewer_following   <chr> NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA…
+#> $ viewer_followed_by <chr> NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA…
+```
+
+
+## `get_follows`
+
+Retrieve the accounts that are followed by a specific account with `get_follows`:
+
+
+```r
+get_follows(actor = "benguinaudeau.bsky.social", limit = 200)  |>
+  dplyr::glimpse()
+#> Rows: 187
+#> Columns: 11
+#> $ did                <chr> "did:plc:bgnw6liy2b3bto6tkwgn2lf4", "did:plc:c…
+#> $ handle             <chr> "julienrobin.bsky.social", "mamartel.bsky.soci…
+#> $ display_name       <chr> "Julien Robin", "Marc-Antoine Martel", "The Re…
+#> $ description        <chr> "PhD candidate à l’Université de Montréal. \nP…
+#> $ avatar             <chr> "https://cdn.bsky.app/img/avatar/plain/did:plc…
+#> $ indexed_at         <chr> "2023-12-22T19:12:22.412Z", "2023-12-17T20:47:…
+#> $ viewer_muted       <lgl> FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALS…
+#> $ viewer_blocked_by  <lgl> FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALS…
+#> $ viewer_following   <chr> NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, "at://…
+#> $ viewer_followed_by <chr> NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA…
+#> $ labels             <named list> <NULL>, <NULL>, <NULL>, <NULL>, <NULL>,…
+```
+
+You'll notice each follower/following has a description (i.e. their bio). It's a nifty way to get to know a bit about them at a glance!
+
+
+## Follower Network Visualization
+
+This section guides you through the process of visualizing a follower network for a given user on Blue Sky. The primary focus is on the interconnected relationships among followers.
+
+The first step is to load some additional packages. Then we get the followers for the main user we are interested in. We will then delve deeper and fetch the followers for each of these followers.
+
+
+```r
+library(ggplot2)
+library(dplyr)
+library(purrr)
+library(tidyr)
+library(igraph)
+library(ggraph)
+library(tidygraph)
+
+# Retrieve the followers for the main user
+some_followers <- get_followers(actor = "benguinaudeau.bsky.social", limit = 10)$handle
+
+# For each follower, retrieve their own set of followers.
+# This provides a nested view of relationships.
+followers_of_followers <- some_followers |>
+  purrr::map_dfr(~{
+    get_followers(actor = .x, limit = 200) |>
+    mutate(from = .x)
+  }) |>
+  dplyr::rename(to = handle) |>
+  dplyr::select(from, to) %>%
+  dplyr::add_count(to, name = "n_to") %>%
+  dplyr::add_count(from, name = "n_from") %>%
+  dplyr::filter(n_to > 1 | n_from > 1) %>%
+  dplyr::select(-n_to:-n_from)
+```
+
+
+## Building and Visualizing the Follower Network
+
+
+```r
+# Construct the network graph and plot
+graph <- igraph::graph_from_data_frame(followers_of_followers, directed = TRUE)
+
+# Use ggraph to visualize the network.
+ggraph::ggraph(graph, layout = 'fr') +
+  ggraph::geom_edge_link() +
+  ggraph::geom_node_point(aes(size = tidygraph::centrality_pagerank()), color = "lightblue") +
+  ggraph::geom_node_text(aes(label = name, size = tidygraph::centrality_pagerank(), family = "mono", fontface = "bold"),
+                   vjust = 1, hjust = 1, check_overlap = T, color = "white", show.legend = F) +
+  ggraph::geom_node_text(aes(label = name, size = tidygraph::centrality_pagerank(), family = "mono"),
+                   vjust = 1, hjust = 1, check_overlap = T, color = "blue", show.legend = F) +
+  ggplot2::theme_void() +
+  ggplot2::theme(legend.position = "bottom")
+```
+
+<img src="figures/unnamed-chunk-6-1.png" alt="Follower Network" width="100%" />
+
+
+## Find people to follow
+
+You can use a similar approach to find new people you might want to follow.
+First get all the people you already follow by quering your own account:
+
+
+```r
+my_follows <- get_follows(actor = "jbgruber.bsky.social",
+                              limit = 10)$handle # limit only for demonstration
+
+# For each account you follow, retrieve who they follow.
+follows_of_follows <- my_follows |>
+  purrr::map_dfr(~{
+    get_followers(actor = .x, limit = 100) |>
+      mutate(from = .x)
+  })
+
+# Now we can check which accounts are popular among the people you already follow
+follows_of_follows |>
+  dplyr::filter(!handle %in% my_follows) |> # exclude accounts you already follow
+  dplyr::count(display_name, handle, sort = TRUE)
+#> # A tibble: 591 × 3
+#>    display_name         handle                           n
+#>    <chr>                <chr>                        <int>
+#>  1 "Chris MacQuarrie "  cmacquar.bsky.social            12
+#>  2  <NA>                sedmaar.bsky.social             12
+#>  3 "Johannes B. Gruber" jbgruber.bsky.social            10
+#>  4 "Alan Jackson"       akjackson.bsky.social            6
+#>  5 "Aleksandra Urman"   aurman21.bsky.social             6
+#>  6 "Alexandra Boutros"  alexandraboutros.bsky.social     6
+#>  7 "Andy Carr"          andycarr.bsky.social             6
+#>  8 "Daniel Moccand"     moccand.bsky.social              6
+#>  9 "Dominar Rygel XVI"  oaklandishdude.bsky.social       6
+#> 10 "Dr. Ashok Karra"    akarra.bsky.social               6
+#> # ℹ 581 more rows
+```
+
+The original account shows up in this overview, as do accounts that were excluded because of the limit set to do the demonstration.
+
+But all of these accounts look interesting!
+
+# Likes and Reposts
+
+You can also retrieve the accounts that liked or reposted your skeets.
+
+## Who liked your skeets?
+
+Want to create like networks? The `get_likes` function allows you to extract information about users who liked a specific post. By simply providing the post's URL, you can get a list of users who expressed their appreciation for the content.
+
+
+
+
+```r
+get_likes("https://bsky.app/profile/ryanlcooper.com/post/3kb42gayda52t")  |>
+  dplyr::glimpse()
+#> Rows: 25
+#> Columns: 5
+#> $ created_at   <dttm> 2023-12-19 07:52:16, 2023-11-15 11:54:29, 2023-11-0…
+#> $ indexed_at   <dttm> 2023-12-19 07:52:17, 2023-11-15 11:54:29, 2023-11-0…
+#> $ actor_handle <chr> "vodkula.bsky.social", "giw.bsky.social", "tillyx.bs…
+#> $ actor_name   <chr> "Oops", "Gareth Illmann-Walker", "Tilly", "Jack Vaug…
+#> $ actor_data   <list> ["did:plc:q3fuk5znsrhw6twh3mdo3i2e", "vodkula.bsky.…
+```
+
+## Who reposted your skeets?
+
+Want to create repost networks? Reposts (or reskeets), akin to retweets on platforms like Twitter, amplify the reach of content by sharing it with a wider audience.
+
+The `get_reposts` function is designed to retrieve information about users who reposted a specific piece of content.
+
+
+```r
+get_reposts(post_url = "https://bsky.app/profile/ryanlcooper.com/post/3kb42gayda52t")  |>
+  dplyr::glimpse()
+#> Rows: 45
+#> Columns: 9
+#> $ did              <chr> "did:plc:rkx7ioruvfkr7ure6epdmqis", "did:plc:s3o…
+#> $ handle           <chr> "giw.bsky.social", "lawless523.bsky.social", "la…
+#> $ displayName      <chr> "Gareth Illmann-Walker", "lawless", "lawless", "…
+#> $ description      <chr> "YamYam, White Hat open source geek old enough t…
+#> $ avatar           <chr> "https://cdn.bsky.app/img/avatar/plain/did:plc:r…
+#> $ indexedAt        <chr> "2023-11-08T08:02:57.224Z", "2023-12-22T21:09:54…
+#> $ viewer_muted     <lgl> FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,…
+#> $ viewer_blockedBy <lgl> FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,…
+#> $ labels           <named list> <NULL>, "did:plc:s3or3peikxebl2moku3kj3dm…
+```
+
+
