@@ -28,6 +28,9 @@ parse_post_list <- function(post_list) {
                                    .default = NA_character_),
     quotes        = purrr::map_chr(post_list, c("record", "embed", "record", "uri"),
                                    .default = NA_character_),
+    tags          = purrr::map(post_list, function(p) extrct_ftrs(p, "app.bsky.richtext.facet#tag")),
+    mentions      = purrr::map(post_list, function(p) extrct_ftrs(p, "app.bsky.richtext.facet#mention")),
+    links         = purrr::map(post_list, function(p) extrct_ftrs(p, "app.bsky.richtext.facet#link"))
   )
 }
 
@@ -113,19 +116,17 @@ parse_facets <- function(text) {
   }) |>
     append(facets)
 
-  # # in theory, we could use an approach like this to support hashtags. The
-  # # problem is that the linked search does not work. It simply ignores the #
-  # hashtags <- str_locate_all_bytes(text, "\\W#\\w+")
-  # hashtags$match <- stringr::str_remove(hashtags$match, "#")
-  # facets <- purrr::pmap(hashtags, function(start, end, match) {
-  #   list(
-  #     index = list(byteStart = start, byteEnd = end),
-  #     features = list(list(
-  #       "$type" = "app.bsky.richtext.facet#link",
-  #       "uri" = glue::glue("https://bsky.app/search?q=%23{match}")))
-  #   )
-  # }) |>
-  #   append(facets)
+  hashtags <- str_locate_all_bytes(text, "\\W#\\w+")
+  hashtags$match <- stringr::str_remove(hashtags$match, "#")
+  facets <- purrr::pmap(hashtags, function(start, end, match) {
+    list(
+      index = list(byteStart = start, byteEnd = end),
+      features = list(list(
+        "$type" = "app.bsky.richtext.facet#tag",
+        "tag" = match
+    )))
+  }) |>
+    append(facets)
   return(facets)
 }
 

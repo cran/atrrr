@@ -173,8 +173,8 @@ com_atproto_repo_upload_blob2 <- function(image,
   img <- magick::image_read(image)
   image_mimetype <- paste0("image/", tolower(magick::image_info(img)$format))
 
-  # TODO: not sure how to get the magick image as raw vector
-  img <- readBin(image, "raw", file.info(image)$size)
+  # transform to raw. Thanks Miff! https://stackoverflow.com/a/77824559/5028841
+  img <- magick::image_write(img)
 
   httr2::request("https://bsky.social/xrpc/com.atproto.repo.uploadBlob") |>
     httr2::req_auth_bearer_token(token = .token$accessJwt) |>
@@ -182,6 +182,17 @@ com_atproto_repo_upload_blob2 <- function(image,
     httr2::req_body_raw(img) |>
     httr2::req_perform() |>
     httr2::resp_body_json()
+}
+
+
+did_lookup <- function(did) {
+  # cheers hrbrmstr!
+  httr2::request("https://plc.directory/") |>
+    httr2::req_url_path_append(did) |>
+    httr2::req_error(is_error = function(resp) FALSE) |>
+    httr2::req_perform() |>
+    httr2::resp_body_json(check_type = FALSE) |>
+    purrr::pluck("alsoKnownAs", 1, .default = did)
 }
 
 
@@ -213,4 +224,52 @@ str_locate_all_bytes <- function(string, pattern) {
     }
   }
   return(spans)
+}
+
+
+fetch_preview <- function(record) {
+  uri <- purrr::pluck(record, "facets", 1, "features", 1, "uri",
+                      .default = NA_character_)
+  if (!is.na(uri)) {
+    # this is the API bsky.app is using. Not sure how robust it is
+    preview <- httr2::request("https://cardyb.bsky.app/v1/extract") |>
+      httr2::req_url_query(url = uri) |>
+      httr2::req_perform() |>
+      httr2::resp_body_json()
+
+    embed <- list(`$type` = "app.bsky.embed.external",
+                  external = list(uri = preview$url,
+                                  title = preview$title,
+                                  description = preview$description))
+    if (purrr::pluck_exists(preview, "image")) {
+      embed$external$thumb <-
+        com_atproto_repo_upload_blob2(purrr::pluck(preview, "image"))$blob
+    }
+    record$embed <- embed
+  }
+  return(record)
+}
+
+# extract features, e.g., hashtags, links and mentions from an unparsed post
+extrct_ftrs <- function(post, feature_type) {
+  facets <- purrr::pluck(post, "record", "facets")
+  purrr::map(facets, function(fct) {
+    if (purrr::pluck(fct, "features", 1, "$type") == feature_type) {
+      purrr::pluck(fct, "features", 1, "tag")
+    }
+  }) |>
+    unlist()
+}
+
+# save ggplot plots in file to post them
+from_ggplot <- function(image) {
+  if (methods::is(image, "ggplot")) {
+    rlang::check_installed("ggplot2")
+    tmp <- tempfile(fileext = ".png")
+    ggplot2::ggsave(tmp, image,
+                    width = 7,
+                    height = 7)
+    image <- tmp
+  }
+  return(image)
 }

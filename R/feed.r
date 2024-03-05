@@ -564,10 +564,12 @@ get_replies <- function(post_url,
 #' @param text Text to post
 #' @param in_reply_to URL or URI of a skeet this should reply to.
 #' @param quote URL or URI of a skeet this should quote.
-#' @param image path to an image to post
-#' @param image_alt alt text for the image
-#' @param created_at time stamp of the post
-#' @param post_url URL or URI of post to delete
+#' @param image path to an image to post.
+#' @param image_alt alt text for the image.
+#' @param created_at time stamp of the post.
+#' @param preview_card display a preview card for links included in the text
+#'   (only if image is `NULL`).
+#' @param post_url URL or URI of post to delete.
 #' @inheritParams search_user
 #'
 #' @returns list of the URI and CID of the post (invisible)
@@ -583,6 +585,7 @@ post <- function(text,
                  image = NULL,
                  image_alt = NULL,
                  created_at = Sys.time(),
+                 preview_card = TRUE,
                  verbose = NULL,
                  .token = NULL) {
 
@@ -640,7 +643,8 @@ post <- function(text,
     )
   }
 
-  if (!is.null(image) && image != "") {
+  if (!is.null(image) && !identical(image, "")) {
+    image <- from_ggplot(image)
     rlang::check_installed("magick")
     image_alt <- image_alt  %||% ""
     # TODO: make it possible to post several images (up to 4 are allowed)
@@ -657,6 +661,10 @@ post <- function(text,
   parsed_richtext <- parse_facets(text)
   if (!any(is.na(unlist(parsed_richtext)))) {
     record[["facets"]] <- parsed_richtext
+    if (!purrr::pluck_exists(record, "embed") && preview_card) {
+      # preview card
+      record <- fetch_preview(record)
+    }
   }
 
   invisible(do.call(what = com_atproto_repo_create_record,
@@ -769,20 +777,41 @@ post_thread <- function(texts,
 
 #' Search Posts
 #'
-#' @param q Find posts matching search criteria. API docs claim that Lucene
-#'   query syntax is supported (boolean operators and brackets for complex
-#'   queries). But only whitespace as implicit AN seems to work.
+#' @param q search query. See Details.
 #' @inheritParams search_user
+#'
+#' @details The [API
+#'   docs](https://docs.bsky.app/docs/api/app-bsky-feed-search-posts) claim that
+#'   Lucene query syntax is supported (Boolean operators and brackets for
+#'   complex queries). But only a small subset is [actually
+#'   implemented](https://github.com/bluesky-social/indigo/tree/main/cmd/palomar):
+#'
+#'   - Whitespace is treated as implicit AND, so all words in a query must occur,
+#'      but the word order and proximity are ignored.
+#'   - Double quotes indicate exact phrases.
+#'   - `from:<handle>` will filter to results from that account.
+#'   - `-` excludes terms (does not seem to be working at the moment).
+#'
+#'   Note that matches can occur anywhere in the skeet, not just the text. For
+#'   example, a term can be in the link preview, or alt text of an image.
+#'
 #'
 #' @returns a data frame (or nested list) of posts
 #'
 #' @examples
 #' \dontrun{
 #' search_post("rstats")
-#' # finds post with rstats and Bluesky in text
-#' search_post("rstats Bluesky")
-#' # does not find anything, since hashtags seem to be treated differently
-#' search_post("#rstats")
+#' # finds post with the hashtag rstats AND the word Bluesky somewhere in the
+#' # skeet (ignoring capitalisaion)
+#' search_post("#rstats Bluesky")
+#'
+#' # search for the exact phrase "new #rstats package"
+#' search_post("\"new #rstats package\"")
+#' # Use single quotes so you do not need to escape double quotes
+#' search_post('"new #rstats package"')
+#'
+#' # only search for skeets from one user
+#' search_post("from:jbgruber.bsky.social #rstats")
 #' }
 #' @export
 search_post <- function(q,
@@ -794,11 +823,6 @@ search_post <- function(q,
   res <- list()
   req_limit <- ifelse(limit > 100, 100, limit)
   last_cursor <- NULL
-
-  if (stringr::str_detect(q, "^#")) {
-    q <- stringr::str_remove(q, "^#")
-    cli::cli_alert_info("The search endpoint currently does not support searching for hashtags. Searching for \"{q}\" instead")
-  }
 
   if (verbosity(verbose)) cli::cli_progress_bar(
     format = "{cli::pb_spin} Got {length(res)} posts, but there is more.. [{cli::pb_elapsed}]",
@@ -843,3 +867,6 @@ search_post <- function(q,
   return(out)
 }
 
+#' @rdname search_post
+#' @export
+search_skeet <- search_post
