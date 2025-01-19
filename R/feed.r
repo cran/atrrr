@@ -1,6 +1,7 @@
 #' A view of an actor's skeets.
 #'
 #' @param actor user handle to retrieve feed for.
+#' @param filter get only certain post/repost types. Possible values "posts_with_replies", "posts_no_replies", "posts_with_media", and "posts_and_author_threads".
 #' @inheritParams get_followers
 #'
 #' @returns a data frame (or nested list) of posts
@@ -12,6 +13,7 @@
 #' }
 get_skeets_authored_by <- function(actor,
                                    limit = 25L,
+                                   filter = NULL,
                                    cursor = NULL,
                                    parse = TRUE,
                                    verbose = NULL,
@@ -20,6 +22,13 @@ get_skeets_authored_by <- function(actor,
   res <- list()
   req_limit <- ifelse(limit > 100, 100, limit)
   last_cursor <- NULL
+  allowed_values <- c("posts_with_replies",
+                      "posts_no_replies",
+                      "posts_with_media",
+                      "posts_and_author_threads")
+  if (!filter %in% allowed_values && !is.null(filter)) {
+    cli::cli_abort("{.code filter} must be one of {.val {allowed_values}}")
+  }
 
   if (verbosity(verbose)) cli::cli_progress_bar(
     format = "{cli::pb_spin} Got {length(res)} skeets, but there is more.. [{cli::pb_elapsed}]",
@@ -33,6 +42,7 @@ get_skeets_authored_by <- function(actor,
         actor = actor,
         limit = req_limit,
         cursor = last_cursor,
+        filter = filter,
         .token = .token,
         .return = "json"
       ))
@@ -381,6 +391,67 @@ get_likes <- function(post_url,
 }
 
 
+#' Get likes of a user
+#'
+#' @param actor user handle to retrieve likes for.
+#' @inheritParams search_user
+#'
+#' @returns a data frame (or nested list) of likes/reposts
+#'
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' get_actor_likes("jbgruber.bsky.social")
+#' }
+get_actor_likes <- function(actor,
+                            limit = 25L,
+                            cursor = NULL,
+                            parse = TRUE,
+                            verbose = NULL,
+                            .token = NULL) {
+
+  res <- list()
+  req_limit <- ifelse(limit > 100, 100, limit)
+  last_cursor <- NULL
+
+  if (verbosity(verbose)) cli::cli_progress_bar(
+    format = "{cli::pb_spin} Got {length(res)} like entries, but there is more.. [{cli::pb_elapsed}]",
+    format_done = "Got {length(res)} records. All done! [{cli::pb_elapsed}]"
+  )
+
+  while (length(res) < limit) {
+    resp <- do.call(
+      what = app_bsky_feed_get_actor_likes,
+      args = list(
+        actor = actor,
+        limit = req_limit,
+        cursor = last_cursor,
+        .token = .token,
+        .return = "json"
+      ))
+
+    last_cursor <- resp$cursor
+    res <- c(res, resp$feed)
+
+    if (is.null(resp$cursor)) break
+    if (verbosity(verbose)) cli::cli_progress_update(force = TRUE)
+  }
+
+  if (verbosity(verbose)) cli::cli_progress_done()
+
+  if (parse) {
+    if (verbosity(verbose)) cli::cli_progress_step("Parsing {length(res)} results.")
+    out <- parse_timeline(res)
+    if (verbosity(verbose)) cli::cli_process_done(msg_done = "Got {nrow(out)} results. All done!")
+  } else {
+    out <- res
+  }
+  attr(out, "last_cursor") <- last_cursor
+  return(out)
+}
+
+
 #' @rdname get_likes
 #' @export
 get_reposts <- function(post_url,
@@ -564,7 +635,7 @@ get_replies <- function(post_url,
 #' @param text Text to post
 #' @param in_reply_to URL or URI of a skeet this should reply to.
 #' @param quote URL or URI of a skeet this should quote.
-#' @param image path to an image to post.
+#' @param image,video path to an image or video to post.
 #' @param image_alt alt text for the image.
 #' @param created_at time stamp of the post.
 #' @param labels can be used to label a post, for example "!no-unauthenticated",
@@ -590,6 +661,7 @@ post <- function(text,
                  quote = NULL,
                  image = NULL,
                  image_alt = NULL,
+                 video = NULL,
                  created_at = Sys.time(),
                  labels = NULL,
                  langs = NULL,
@@ -640,7 +712,7 @@ post <- function(text,
     )
   }
 
-  # quote <- "https://bsky.app/profile/favstats.bsky.social/post/3kc57mkoi6a2k"
+  # quote <- "https://bsky.app/profile/favstats.eu/post/3kc57mkoi6a2k"
   if (!is.null(quote)) {
     quote <- ifelse(grepl("^http", quote),
                     convert_http_to_at(quote, .token = .token),
@@ -662,15 +734,29 @@ post <- function(text,
 
   if (!is.null(image) && !identical(image, "")) {
     image <- from_ggplot(image)
-    rlang::check_installed("magick")
-    image_alt <- image_alt  %||% ""
-    # TODO: make it possible to post several images (up to 4 are allowed)
-    blob <- com_atproto_repo_upload_blob2(image, .token = .token)
+    rlang::check_installed("av")
+    image_alt[utils::tail(length(image_alt):length(image), -1)] <- ""
+    images <- purrr::map2(image, image_alt, function(i, alt) {
+      ar <- av::av_video_info(i)
+      blob <- com_atproto_repo_upload_blob2(i, .token = .token)
+      list(alt = alt,
+           image = blob[["blob"]],
+           aspectRatio = list(height = ar$video$height, width = ar$video$width))
+    })
     record[["embed"]] <- list(
       "$type" = "app.bsky.embed.images",
-      images = list(
-        list(alt = image_alt,
-             image = blob[["blob"]]))
+      images = images
+    )
+  }
+
+  if (!is.null(video) && !identical(video, "")) {
+    rlang::check_installed("av")
+    blob <- com_atproto_repo_upload_blob2(video, .token = .token)
+    ar <- av::av_video_info(video)
+    record[["embed"]] <- list(
+      "$type" = "app.bsky.embed.video",
+      video = blob$blob,
+      aspectRatio = list(height = ar$video$height, width = ar$video$width)
     )
   }
 
@@ -795,6 +881,27 @@ post_thread <- function(texts,
 #' Search Posts
 #'
 #' @param q search query. See Details.
+#' @param sort string. Specifies the ranking order of results. Possible values
+#'   are "top" or "latest". Defaults to "latest".
+#' @param since string. Filter results for posts after the specified datetime
+#'   (inclusive). Can be a date or datetime object or a string that can be
+#'   parsed either.
+#' @param until string. Filter results for posts before the specified datetime
+#'   (not inclusive). Can be a date or datetime object or a string that can be
+#'   parsed either.
+#' @param mentions string. Filter to posts that mention the given account. Only
+#'   matches rich-text facet mentions.
+#' @param author string. Filter to posts authored by the specified account.
+#' @param lang string. Filter results to posts in the specified language.
+#'   Language detection is expected to use the post's language field, though the
+#'   server may override detection.
+#' @param domain string. Filter results to posts containing URLs (links or
+#'   embeds) pointing to the specified domain. Hostname normalization may apply.
+#' @param url string. Filter results to posts containing links or embeds
+#'   matching the specified URL. URL normalization or fuzzy matching may apply.
+#' @param tag string. Filter results to posts containing the specified tag
+#'   (hashtag). Do not include the hash (#) prefix. Multiple tags can be
+#'   specified, with results matching all specified tags (logical AND).
 #' @inheritParams search_user
 #'
 #' @details The [API
@@ -804,7 +911,7 @@ post_thread <- function(texts,
 #'   implemented](https://github.com/bluesky-social/indigo/tree/main/cmd/palomar):
 #'
 #'   - Whitespace is treated as implicit AND, so all words in a query must occur,
-#'      but the word order and proximity are ignored.
+#'   but the word order and proximity are ignored.
 #'   - Double quotes indicate exact phrases.
 #'   - `from:<handle>` will filter to results from that account.
 #'   - `-` excludes terms (does not seem to be working at the moment).
@@ -829,10 +936,30 @@ post_thread <- function(texts,
 #'
 #' # only search for skeets from one user
 #' search_post("from:jbgruber.bsky.social #rstats")
+#'
+#' # narrow down the search with more parameters
+#' search_post("{atrrr}",
+#'             sort = "top",
+#'             since = "2024-12-05",
+#'             until = "2024-12-07 10:00:00",
+#'             mentions = NULL,
+#'             author = "jbgruber.bsky.social",
+#'             domain = "jbgruber.github.io",
+#'             url = "https://jbgruber.github.io/atrrr",
+#'             tag = "rstats")
 #' }
 #' @export
 search_post <- function(q,
                         limit = 100L,
+                        sort = NULL,
+                        since = NULL,
+                        until = NULL,
+                        mentions = NULL,
+                        author = NULL,
+                        lang = NULL,
+                        domain = NULL,
+                        url = NULL,
+                        tag = NULL,
                         parse = TRUE,
                         verbose = NULL,
                         .token = NULL) {
@@ -840,6 +967,12 @@ search_post <- function(q,
   res <- list()
   req_limit <- ifelse(limit > 100, 100, limit)
   last_cursor <- NULL
+  if (!is.null(since)) {
+    since <- as_iso_date(since)
+  }
+  if (!is.null(until)) {
+    until <- as_iso_date(until)
+  }
 
   if (verbosity(verbose)) cli::cli_progress_bar(
     format = "{cli::pb_spin} Got {length(res)} posts, but there is more.. [{cli::pb_elapsed}]",
@@ -853,6 +986,15 @@ search_post <- function(q,
         q = q,
         limit = req_limit,
         cursor = last_cursor,
+        sort = sort,
+        since = since,
+        until = until,
+        mentions = mentions,
+        author = author,
+        lang = lang,
+        domain = domain,
+        url = url,
+        tag = tag,
         .token = .token,
         .return = "json"
       ))

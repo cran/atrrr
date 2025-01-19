@@ -56,9 +56,11 @@ make_request <- function(hostname, params, req_method = c("GET", "POST")) {
 
     resp <- list(
       scheme = "https",
-      hostname = hostname,
+      hostname = dirname(hostname),
+      path = basename(hostname),
       query = as.list(all_params)
     ) |>
+      structure(class = "httr2_url") |>
       httr2::url_build() |>
       httr2::request() |>
       httr2::req_method("GET") |>
@@ -105,22 +107,30 @@ parse_http_url <- function(url){
                         purrr::pluck("path") |>
                         stringr::str_split("(?<=.)\\/"))
 
-  out <- tibble::tibble(
-    repo_type  = purrr::map_chr(parts, c(1, 1), .default = NA_character_),
-    repo       = purrr::map_chr(parts, c(1, 2), .default = NA_character_),
-    collection = purrr::map_chr(parts, c(1, 3), .default = NA_character_),
-    rkey       = purrr::map_chr(parts, c(1, 4), .default = NA_character_)
-  )
+  if (isTRUE(stringr::str_detect(url, "starter-pack"))) {
+    out <- tibble::tibble(
+      collection  = purrr::map_chr(parts, c(1, 1), .default = NA_character_),
+      repo       = purrr::map_chr(parts, c(1, 2), .default = NA_character_),
+      rkey       = purrr::map_chr(parts, c(1, 3), .default = NA_character_)
+    )
+  } else {
+    out <- tibble::tibble(
+      repo_type  = purrr::map_chr(parts, c(1, 1), .default = NA_character_),
+      repo       = purrr::map_chr(parts, c(1, 2), .default = NA_character_),
+      collection = purrr::map_chr(parts, c(1, 3), .default = NA_character_),
+      rkey       = purrr::map_chr(parts, c(1, 4), .default = NA_character_)
+    )
+  }
 
   map <- c(
     "post" = "app.bsky.feed.post",
     "feed" = "app.bsky.feed.generator",
-    "lists" = "app.bsky.graph.list"
+    "lists" = "app.bsky.graph.list",
+    "/starter-pack" = "app.bsky.graph.starterpack"
   )
   out$collection <- unname(map[out$collection])
 
   return(out)
-
 }
 
 
@@ -165,23 +175,49 @@ verbosity <- function(verbose) {
 
 #' lexicon seems wrong. translated from https://atproto.com/blog/create-post#images-embeds
 #' @noRd
-com_atproto_repo_upload_blob2 <- function(image,
+com_atproto_repo_upload_blob2 <- function(file,
                                           .token = NULL) {
-
+  if (identical(file, "")) return()
   .token <- .token %||% get_token()
-  rlang::check_installed("magick")
-  img <- magick::image_read(image)
-  image_mimetype <- paste0("image/", tolower(magick::image_info(img)$format))
+  req <- httr2::request("https://bsky.social/xrpc/com.atproto.repo.uploadBlob") |>
+    httr2::req_auth_bearer_token(token = .token$accessJwt)
 
-  # transform to raw. Thanks Miff! https://stackoverflow.com/a/77824559/5028841
-  img <- magick::image_write(img)
+  if (stringr::str_detect(file, "^http|^www")) {
+    res <- httr2::request(file) |>
+      httr2::req_perform()
 
-  httr2::request("https://bsky.social/xrpc/com.atproto.repo.uploadBlob") |>
-    httr2::req_auth_bearer_token(token = .token$accessJwt) |>
-    httr2::req_headers("Content-Type" = image_mimetype) |>
-    httr2::req_body_raw(img) |>
-    httr2::req_perform() |>
-    httr2::resp_body_json()
+    # fix blob too larger error https://github.com/JBGruber/atrrr/issues/27
+    if (length(res$body) > 1000000 & grepl("image", res$headers$`content-type`)) {
+      rlang::check_installed("magick")
+      res$body <- magick::image_read(res$body) |>
+        magick::image_write(defines = c("jpeg:extent" = "1000kb"))
+    }
+
+    req |>
+      httr2::req_headers("Content-Type" = res$headers$`content-type`) |>
+      httr2::req_body_raw(body = res$body) |>
+      httr2::req_perform() |>
+      httr2::resp_body_json()
+  } else if (file.exists(file)) {
+    rlang::check_installed("mime")
+    if (file.info(file)$size > 1000000 & grepl("image", mime::guess_type(file))) {
+      rlang::check_installed("magick")
+      cli::cli_alert_info(
+        "Image {file} is too large and will be compressed before uploading"
+      )
+      file <- magick::image_read(file) |>
+        magick::image_write(path = tempfile(fileext = ".jpeg"),
+                            defines = c("jpeg:extent" = "1000kb"))
+    }
+    req |>
+      httr2::req_headers("Content-Type" = mime::guess_type(file)) |>
+      httr2::req_body_file(path = file) |>
+      httr2::req_perform() |>
+      httr2::resp_body_json()
+  } else {
+    cli::cli_abort("image/video file {file} could not be found locally or online.")
+  }
+
 }
 
 
@@ -236,18 +272,27 @@ fetch_preview <- function(record) {
 
   if (length(uri) > 0L) {
     # this is the API bsky.app is using. Not sure how robust it is
-    preview <- httr2::request("https://cardyb.bsky.app/v1/extract") |>
+    resp <- httr2::request("https://cardyb.bsky.app/v1/extract") |>
       httr2::req_url_query(url = uri) |>
-      httr2::req_perform() |>
-      httr2::resp_body_json()
+      httr2::req_error(is_error = function(resp) FALSE) |>
+      httr2::req_perform()
 
-    embed <- list(`$type` = "app.bsky.embed.external",
-                  external = list(uri = preview$url,
-                                  title = preview$title,
-                                  description = preview$description))
-    if (purrr::pluck_exists(preview, "image")) {
-      embed$external$thumb <-
-        com_atproto_repo_upload_blob2(purrr::pluck(preview, "image"))$blob
+    if (httr2::resp_status(resp) < 400L) {
+      preview <- resp |>
+        httr2::resp_body_json()
+      embed <- list(`$type` = "app.bsky.embed.external",
+                    external = list(uri = preview$url,
+                                    title = preview$title,
+                                    description = preview$description))
+      if (purrr::pluck_exists(preview, "image")) {
+        embed$external$thumb <-
+          com_atproto_repo_upload_blob2(purrr::pluck(preview, "image"))$blob
+      }
+    } else {
+      embed <- list(`$type` = "app.bsky.embed.external",
+                    external = list(uri = uri,
+                                    title = "",
+                                    description = ""))
     }
     record$embed <- embed
   }
@@ -276,4 +321,20 @@ from_ggplot <- function(image) {
     image <- tmp
   }
   return(image)
+}
+
+as_tibble_onerow <- function(l) {
+  l <- purrr::map(l, function(c) {
+    if (length(c) != 1) {
+      return(list(c))
+    }
+    return(c)
+  })
+  # .name_repair required for older versions of Ollama
+  tibble::as_tibble(l, .name_repair = snakecase::to_snake_case)
+}
+
+as_iso_date <- function(x) {
+  as.POSIXct(x, tz = "UTC") |>
+    format("%Y-%m-%dT%H:%M:%OS3Z", tz = "UTC")
 }
