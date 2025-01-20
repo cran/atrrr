@@ -1,10 +1,10 @@
-4842ff34e76e55507a7819693438132e *DESCRIPTION
+0791bf9cf743f13fbf013111cb3829ba *DESCRIPTION
 5654d0c1efae19e07d13dde5abffede0 *LICENSE
 1cbfccb8bb12089fe80a6dd5ba092043 *NAMESPACE
-8449140e5dc728ea7e9c7ab44d027fef *NEWS.md
+22dcc72a4af2cfadae9fd18aee957d1d *NEWS.md
 65e5b27cf94e20d84ea40a4387f0d584 *R/actors.r
 6c1f905093763d4476caef6226d2cabb *R/atrrr-package.R
-53b88ad24ad1e6756d2830d689569191 *R/auth.r
+bc194a1993407a81b6496cc100aca203 *R/auth.r
 7254d0b8160c5ca1018d2d9338a9dc9d *R/auto_app_bsky_actor.R
 4f509074966627b2f47f3d4e0cfc3ef4 *R/auto_app_bsky_feed.R
 2613352671350952b9e1599b3fac23f1 *R/auto_app_bsky_graph.R
@@ -32,7 +32,7 @@ de358f4a22a9561244d609c9698d7ca0 *R/auto_com_atproto_repo.R
 e7b7a13bbbda7893b57b5645271209e4 *R/auto_tools_ozone_team.R
 b8ca6b81364b5f6634eba7b74958a2dc *R/convert.r
 77207107a174b211b70601800027562b *R/data.R
-9158ce5b4c23ff5a38b20fc78a00ce6b *R/feed.r
+119718397b4455b2b16f20859721ce95 *R/feed.r
 7cd66e856455cc14caaae8eede36c248 *R/gen.r
 8a2fa3b518d6268d5109d5f7fc43f031 *R/graph.r
 4ff35b6eefe03859a5717fc8cb2c6f93 *R/lexicons.R
@@ -41,7 +41,7 @@ eedec393afcc11375f7d3f58b178a147 *R/lists.r
 c24e162fb9294d5adda12a5473dd0db4 *R/skeet_shot.r
 fa51f7a453dd369e831658b312d71d07 *R/sysdata.rda
 83f7ad658ecb3f45bcad48b5d4fd41bf *R/utils.r
-1f3022fd7c55fe94cdb3185db51dc2c5 *README.md
+1909cacf79064948f1a7c751894f74b1 *README.md
 da7214628cc532ef8d6f311c7adee094 *build/vignette.rds
 6a3fa797626e7fb10eaf1efc6296b0e1 *data/list_lexicons.rda
 e338959dc99cb9ce0bc9b01514accf36 *inst/doc/Basic_Usage.Rmd

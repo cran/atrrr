@@ -1,6 +1,6 @@
 Package: atrrr
 Title: Wrapper for the 'AT' Protocol Behind 'Bluesky'
-Version: 0.0.5
+Version: 0.1.0
 Authors@R: 
     c(person(given = "Johannes B.",
              family = "Gruber",
@@ -36,11 +36,11 @@ URL: https://jbgruber.github.io/atrrr/,
         https://github.com/JBGruber/atrrr
 BugReports: https://github.com/JBGruber/atrrr/issues
 NeedsCompilation: no
-Packaged: 2025-01-19 19:29:45 UTC; johannes
+Packaged: 2025-01-20 10:45:51 UTC; johannes
 Author: Johannes B. Gruber [aut, cre] (<https://orcid.org/0000-0001-9177-1772>),
   Benjamin Guinaudeau [aut, ctb]
     (<https://orcid.org/0000-0001-7206-6875>),
   Fabio Votta [aut, ctb] (<https://orcid.org/0000-0002-3143-5942>)
 Maintainer: Johannes B. Gruber <JohannesB.Gruber@gmail.com>
 Repository: CRAN
-Date/Publication: 2025-01-19 19:50:01 UTC
+Date/Publication: 2025-01-20 11:30:42 UTC
