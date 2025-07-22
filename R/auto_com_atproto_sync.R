@@ -3,7 +3,7 @@
 #' @noRd
 com_atproto_sync_get_blob <- function(did, cid, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/com.atproto.sync.getBlob",
+    name = "bsky.social/xrpc/com.atproto.sync.getBlob",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -19,7 +19,7 @@ com_atproto_sync_get_blob <- function(did, cid, .token = NULL, .return = c("json
 #' @noRd
 com_atproto_sync_get_blocks <- function(did, cids, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/com.atproto.sync.getBlocks",
+    name = "bsky.social/xrpc/com.atproto.sync.getBlocks",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -35,7 +35,7 @@ com_atproto_sync_get_blocks <- function(did, cids, .token = NULL, .return = c("j
 #' @noRd
 com_atproto_sync_get_checkout <- function(did, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/com.atproto.sync.getCheckout",
+    name = "bsky.social/xrpc/com.atproto.sync.getCheckout",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -51,7 +51,23 @@ com_atproto_sync_get_checkout <- function(did, .token = NULL, .return = c("json"
 #' @noRd
 com_atproto_sync_get_head <- function(did, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/com.atproto.sync.getHead",
+    name = "bsky.social/xrpc/com.atproto.sync.getHead",
+    params = as.list(match.call())[-1] |>
+      purrr::imap(~ {
+        eval(.x, envir = parent.frame())
+      }),
+    req_method = "GET"
+  )
+}
+
+
+
+#' com_atproto_sync_get_host_status
+#' Returns information about a specified upstream host, as consumed by the server. Implemented by relays.
+#' @noRd
+com_atproto_sync_get_host_status <- function(hostname, .token = NULL, .return = c("json", "resp")) {
+  make_request(
+    name = "bsky.social/xrpc/com.atproto.sync.getHostStatus",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -67,7 +83,7 @@ com_atproto_sync_get_head <- function(did, .token = NULL, .return = c("json", "r
 #' @noRd
 com_atproto_sync_get_latest_commit <- function(did, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/com.atproto.sync.getLatestCommit",
+    name = "bsky.social/xrpc/com.atproto.sync.getLatestCommit",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -81,9 +97,9 @@ com_atproto_sync_get_latest_commit <- function(did, .token = NULL, .return = c("
 #' com_atproto_sync_get_record
 #' Get data blocks needed to prove the existence or non-existence of record in the current version of repo. Does not require auth.
 #' @noRd
-com_atproto_sync_get_record <- function(did, collection, rkey, commit = NULL, .token = NULL, .return = c("json", "resp")) {
+com_atproto_sync_get_record <- function(did, collection, rkey, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/com.atproto.sync.getRecord",
+    name = "bsky.social/xrpc/com.atproto.sync.getRecord",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -99,7 +115,7 @@ com_atproto_sync_get_record <- function(did, collection, rkey, commit = NULL, .t
 #' @noRd
 com_atproto_sync_get_repo <- function(did, since = NULL, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/com.atproto.sync.getRepo",
+    name = "bsky.social/xrpc/com.atproto.sync.getRepo",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -115,7 +131,7 @@ com_atproto_sync_get_repo <- function(did, since = NULL, .token = NULL, .return 
 #' @noRd
 com_atproto_sync_get_repo_status <- function(did, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/com.atproto.sync.getRepoStatus",
+    name = "bsky.social/xrpc/com.atproto.sync.getRepoStatus",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -131,7 +147,23 @@ com_atproto_sync_get_repo_status <- function(did, .token = NULL, .return = c("js
 #' @noRd
 com_atproto_sync_list_blobs <- function(did, since = NULL, limit = NULL, cursor = NULL, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/com.atproto.sync.listBlobs",
+    name = "bsky.social/xrpc/com.atproto.sync.listBlobs",
+    params = as.list(match.call())[-1] |>
+      purrr::imap(~ {
+        eval(.x, envir = parent.frame())
+      }),
+    req_method = "GET"
+  )
+}
+
+
+
+#' com_atproto_sync_list_hosts
+#' Enumerates upstream hosts (eg, PDS or relay instances) that this service consumes from. Implemented by relays.
+#' @noRd
+com_atproto_sync_list_hosts <- function(limit = NULL, cursor = NULL, .token = NULL, .return = c("json", "resp")) {
+  make_request(
+    name = "bsky.social/xrpc/com.atproto.sync.listHosts",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -147,7 +179,23 @@ com_atproto_sync_list_blobs <- function(did, since = NULL, limit = NULL, cursor 
 #' @noRd
 com_atproto_sync_list_repos <- function(limit = NULL, cursor = NULL, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/com.atproto.sync.listRepos",
+    name = "bsky.social/xrpc/com.atproto.sync.listRepos",
+    params = as.list(match.call())[-1] |>
+      purrr::imap(~ {
+        eval(.x, envir = parent.frame())
+      }),
+    req_method = "GET"
+  )
+}
+
+
+
+#' com_atproto_sync_list_repos_by_collection
+#' Enumerates all the DIDs which have records with the given collection NSID.
+#' @noRd
+com_atproto_sync_list_repos_by_collection <- function(collection, limit = NULL, cursor = NULL, .token = NULL, .return = c("json", "resp")) {
+  make_request(
+    name = "bsky.social/xrpc/com.atproto.sync.listReposByCollection",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -159,11 +207,11 @@ com_atproto_sync_list_repos <- function(limit = NULL, cursor = NULL, .token = NU
 
 
 #' com_atproto_sync_notify_of_update
-#' Notify a crawling service of a recent update, and that crawling should resume. Intended use is after a gap between repo stream events caused the crawling service to disconnect. Does not require auth; implemented by Relay.
+#' Notify a crawling service of a recent update, and that crawling should resume. Intended use is after a gap between repo stream events caused the crawling service to disconnect. Does not require auth; implemented by Relay. DEPRECATED: just use com.atproto.sync.requestCrawl
 #' @noRd
 com_atproto_sync_notify_of_update <- function(hostname, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/com.atproto.sync.notifyOfUpdate",
+    name = "bsky.social/xrpc/com.atproto.sync.notifyOfUpdate",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -179,7 +227,7 @@ com_atproto_sync_notify_of_update <- function(hostname, .token = NULL, .return =
 #' @noRd
 com_atproto_sync_request_crawl <- function(hostname, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/com.atproto.sync.requestCrawl",
+    name = "bsky.social/xrpc/com.atproto.sync.requestCrawl",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())

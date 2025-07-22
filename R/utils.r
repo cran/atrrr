@@ -38,7 +38,7 @@ flatten_query_params <- function(arg_calls) {
 }
 
 
-make_request <- function(hostname, params, req_method = c("GET", "POST")) {
+make_request <- function(name, params, req_method = c("GET", "POST"), chat = FALSE) {
   req_method <- match.arg(req_method)
 
   .token <- params[[".token"]] %||% get_token()
@@ -49,32 +49,29 @@ make_request <- function(hostname, params, req_method = c("GET", "POST")) {
 
   .return <- utils::head(params[[".return"]], 1L) %||% ""
   params[[".return"]] <- NULL
-
-  if (req_method == "GET") { #
-
-    all_params <- flatten_query_params(params)
-
-    resp <- list(
-      scheme = "https",
-      hostname = dirname(hostname),
-      path = basename(hostname),
-      query = as.list(all_params)
-    ) |>
-      structure(class = "httr2_url") |>
-      httr2::url_build() |>
-      httr2::request() |>
-      httr2::req_method("GET") |>
-      httr2::req_auth_bearer_token(token = .token$accessJwt) |>
-      httr2::req_error(body = error_parse) |>
-      httr2::req_perform()
-  } else if (req_method == "POST") {
-    resp <- httr2::request(glue::glue("https://{hostname}")) |>
-      httr2::req_method("POST") |>
-      httr2::req_auth_bearer_token(token = .token$accessJwt) |>
-      httr2::req_body_json(params) |>
-      httr2::req_error(body = error_parse) |>
-      httr2::req_perform()
+ 
+  if (chat) {
+    sess_url <- com_atproto_server_get_session() |>
+      purrr::pluck("didDoc", "service", 1, "serviceEndpoint")
+    req <- httr2::request(sess_url) |> 
+      httr2::req_url_path(name) |>
+      httr2::req_headers("Atproto-Proxy" = "did:web:api.bsky.chat#bsky_chat")
+  } else {
+    req <- httr2::request(paste0("https://", name))
   }
+
+  req <- req |> 
+    httr2::req_method(req_method) |>
+    httr2::req_auth_bearer_token(token = .token$accessJwt) |>
+    httr2::req_error(body = error_parse)
+
+  if (req_method == "GET") { 
+    all_params <- flatten_query_params(params)
+    req <- httr2::req_url_query(req, !!!all_params)
+  } else if (req_method == "POST") {
+    req <- httr2::req_body_json(req, params)
+  }
+  resp <- httr2::req_perform(req)
 
   if(.return %in% c("", "json")){
     if(length(resp$body)){
@@ -86,6 +83,7 @@ make_request <- function(hostname, params, req_method = c("GET", "POST")) {
 
   return(resp)
 }
+
 
 parse_at_uri <- function(uri){
 
@@ -263,40 +261,31 @@ str_locate_all_bytes <- function(string, pattern) {
 }
 
 
-fetch_preview <- function(record) {
-  facets <- purrr::pluck(record, "facets")
-  uri <- purrr::map_chr(facets, function(f)
-    purrr::pluck(f, "features", 1, "uri", .default = NA_character_)) |>
-    stats::na.omit() |>
-    utils::head(1L) # only one link can be previewed
+fetch_preview <- function(uri) {
+  # this is the API bsky.app is using. Not sure how robust it is
+  resp <- httr2::request("https://cardyb.bsky.app/v1/extract") |>
+    httr2::req_url_query(url = uri) |>
+    httr2::req_error(is_error = function(resp) FALSE) |>
+    httr2::req_perform()
 
-  if (length(uri) > 0L) {
-    # this is the API bsky.app is using. Not sure how robust it is
-    resp <- httr2::request("https://cardyb.bsky.app/v1/extract") |>
-      httr2::req_url_query(url = uri) |>
-      httr2::req_error(is_error = function(resp) FALSE) |>
-      httr2::req_perform()
-
-    if (httr2::resp_status(resp) < 400L) {
-      preview <- resp |>
-        httr2::resp_body_json()
-      embed <- list(`$type` = "app.bsky.embed.external",
-                    external = list(uri = preview$url,
-                                    title = preview$title,
-                                    description = preview$description))
-      if (purrr::pluck_exists(preview, "image")) {
-        embed$external$thumb <-
-          com_atproto_repo_upload_blob2(purrr::pluck(preview, "image"))$blob
-      }
-    } else {
-      embed <- list(`$type` = "app.bsky.embed.external",
-                    external = list(uri = uri,
-                                    title = "",
-                                    description = ""))
+  if (httr2::resp_status(resp) < 400L) {
+    preview <- resp |>
+      httr2::resp_body_json()
+    embed <- list(`$type` = "app.bsky.embed.external",
+                  external = list(uri = preview$url,
+                                  title = preview$title,
+                                  description = preview$description))
+    if (purrr::pluck_exists(preview, "image")) {
+      embed$external$thumb <-
+        com_atproto_repo_upload_blob2(purrr::pluck(preview, "image"))$blob
     }
-    record$embed <- embed
+  } else {
+    embed <- list(`$type` = "app.bsky.embed.external",
+                  external = list(uri = uri,
+                                  title = "",
+                                  description = ""))
   }
-  return(record)
+  return(embed)
 }
 
 # extract features, e.g., hashtags, links and mentions from an unparsed post
@@ -304,7 +293,7 @@ extrct_ftrs <- function(post, feature_type) {
   facets <- purrr::pluck(post, "record", "facets")
   purrr::map(facets, function(fct) {
     if (purrr::pluck(fct, "features", 1, "$type") == feature_type) {
-      purrr::pluck(fct, "features", 1, "tag")
+      purrr::pluck(fct, "features", 1L, 2L)
     }
   }) |>
     unlist()
@@ -337,4 +326,11 @@ as_tibble_onerow <- function(l) {
 as_iso_date <- function(x) {
   as.POSIXct(x, tz = "UTC") |>
     format("%Y-%m-%dT%H:%M:%OS3Z", tz = "UTC")
+}
+
+ensure_columns <- function(df, cols) {
+  nms <- setdiff(cols, colnames(df))
+  add <- character(length(nms))
+  names(add) <- nms
+  tibble::add_column(df, !!!add)
 }

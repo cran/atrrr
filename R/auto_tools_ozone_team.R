@@ -3,7 +3,7 @@
 #' @noRd
 tools_ozone_team_add_member <- function(did, role, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/tools.ozone.team.addMember",
+    name = "bsky.social/xrpc/tools.ozone.team.addMember",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -19,7 +19,7 @@ tools_ozone_team_add_member <- function(did, role, .token = NULL, .return = c("j
 #' @noRd
 tools_ozone_team_delete_member <- function(did, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/tools.ozone.team.deleteMember",
+    name = "bsky.social/xrpc/tools.ozone.team.deleteMember",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -33,9 +33,9 @@ tools_ozone_team_delete_member <- function(did, .token = NULL, .return = c("json
 #' tools_ozone_team_list_members
 #' List all members with access to the ozone service.
 #' @noRd
-tools_ozone_team_list_members <- function(limit = NULL, cursor = NULL, .token = NULL, .return = c("json", "resp")) {
+tools_ozone_team_list_members <- function(q = NULL, disabled = NULL, roles = NULL, limit = NULL, cursor = NULL, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/tools.ozone.team.listMembers",
+    name = "bsky.social/xrpc/tools.ozone.team.listMembers",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())
@@ -51,7 +51,7 @@ tools_ozone_team_list_members <- function(limit = NULL, cursor = NULL, .token = 
 #' @noRd
 tools_ozone_team_update_member <- function(did, disabled = NULL, role = NULL, .token = NULL, .return = c("json", "resp")) {
   make_request(
-    hostname = "bsky.social/xrpc/tools.ozone.team.updateMember",
+    name = "bsky.social/xrpc/tools.ozone.team.updateMember",
     params = as.list(match.call())[-1] |>
       purrr::imap(~ {
         eval(.x, envir = parent.frame())

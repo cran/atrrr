@@ -9,7 +9,7 @@
 #'
 #' @examples
 #' \dontrun{
-#' feed <- get_skeets_authored_by("andrew.heiss.phd")
+#' andrews_posts <- get_skeets_authored_by("andrew.heiss.phd")
 #' }
 get_skeets_authored_by <- function(actor,
                                    limit = 25L,
@@ -644,8 +644,10 @@ get_replies <- function(post_url,
 #'   content.
 #' @param tags additional hashtags, in addition to any included in post text and
 #'   facets.
-#' @param preview_card display a preview card for links included in the text
-#'   (only if image is `NULL`).
+#' @param link instead of adding a link in text (gets parsed automatically),
+#'   it's also possible to add a link directly (and save some characters).
+#' @param preview_card display a preview card for links included in the `text`
+#'   or `link` (if images or videos are included, they take precedence).
 #' @param post_url URL or URI of post to delete.
 #' @inheritParams search_user
 #'
@@ -662,6 +664,7 @@ post <- function(text,
                  image = NULL,
                  image_alt = NULL,
                  video = NULL,
+                 link = NULL,
                  created_at = Sys.time(),
                  labels = NULL,
                  langs = NULL,
@@ -733,7 +736,7 @@ post <- function(text,
   }
 
   if (!is.null(image) && !identical(image, "")) {
-    image <- from_ggplot(image)
+    image <- purrr::map_chr(image, from_ggplot)
     rlang::check_installed("magick")
     image_alt[utils::tail(length(image_alt):length(image), -1)] <- ""
     images <- purrr::map2(image, image_alt, function(i, alt) {
@@ -767,13 +770,26 @@ post <- function(text,
     )
   }
 
+  # link is only added when no image or video exist, but takes precedence over
+  # links in text
+  if (!is.null(link) && !purrr::pluck_exists(record, "embed") && preview_card) {
+    record$embed <- fetch_preview(link)
+  }
+
   # https://atproto.com/blog/create-post#mentions-and-links
   parsed_richtext <- parse_facets(text)
   if (!any(is.na(unlist(parsed_richtext)))) {
     record[["facets"]] <- parsed_richtext
     if (!purrr::pluck_exists(record, "embed") && preview_card) {
-      # preview card
-      record <- fetch_preview(record)
+      uri <- purrr::map_chr(parsed_richtext, function(f)
+        purrr::pluck(f, "features", 1, "uri", .default = NA_character_)) |>
+        stats::na.omit() |>
+        utils::head(1L) # only one link can be previewed
+
+      if (length(uri) > 0L) {
+        # preview card
+        record$embed <- fetch_preview(uri)
+      }
     }
   }
 
@@ -829,8 +845,8 @@ delete_post <- delete_skeet
 #' Post a thread
 #'
 #' @param texts a vector of skeet (post) texts
-#' @param images paths to images to be included in each post
-#' @param image_alts alt texts for the images to be included in each post
+#' @param images paths to images to be included in each post. This may be a character vector, or a list of character vectors if multiple images per post are required.
+#' @param image_alts alt texts for the images to be included in each post. If images is a list of character vectors, this should also be a list of character vectors and have the same shape.
 #' @param thread_df instead of defining texts, images and image_alts, you can
 #'   also create a data frame with the information in columns of the same names.
 #' @inheritParams search_user
@@ -855,12 +871,12 @@ post_thread <- function(texts,
 
   if (is.null(thread_df)) {
     images <- images  %||% rep("", length(texts))
-    image_alts <- image_alts  %||% rep("", length(texts))
+    image_alts <- image_alts  %||% lapply(images, \(x)rep("",length(x)))
     if (length(unique(lengths(list(texts, images, image_alts)))) != 1L) {
       cli::cli_abort("texts, images, image_alts must all have the same length or be NULL.")
     }
 
-    thread_df <- data.frame(
+    thread_df <- tibble::tibble(
       text = texts,
       image = images,
       image_alt = image_alts
@@ -873,9 +889,9 @@ post_thread <- function(texts,
   for (i in seq_along(thread_df$text)) {
     ref <- do.call(
       what = post_skeet,
-      args = list(text = thread_df$text[i],
-                  image = thread_df$image[i],
-                  image_alt = thread_df$image_alt[i],
+      args = list(text = thread_df$text[[i]],
+                  image = thread_df$image[[i]],
+                  image_alt = thread_df$image_alt[[i]],
                   in_reply_to = ref)
     )
     refs <- rbind(refs, as.data.frame(ref))
@@ -1033,6 +1049,65 @@ search_post <- function(q,
   return(out)
 }
 
+
 #' @rdname search_post
 #' @export
 search_skeet <- search_post
+
+
+#' Like a skeet
+#'
+#' @inheritParams post
+#'
+#' @returns invisible record information from the API
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # like a post
+#' like_skeet("https://bsky.app/profile/jbgruber.bsky.social/post/3lcmymlgxwa2t")
+#'
+#' # or feed in the result of some search
+#' johannes_posts <- get_skeets_authored_by("jbgruber.bsky.social")
+#' like_skeet(johannes_posts$uri)
+#' }
+like_skeet <- function(post_url,
+                       verbose = NULL,
+                       .token = NULL) {
+
+  id <- basename(post_url)
+  if (verbosity(verbose)) cli::cli_progress_step(
+    msg = "Request to like post {.emph {id}}",
+    msg_done = "Liked {.emph {id}}",
+    msg_failed = "Something went wrong"
+  )
+
+  invisible(purrr::map(post_url, function(u) {
+    uri <- convert_http_to_at(u, .token = .token)
+    post_info <- do.call(app_bsky_feed_get_posts,
+              args = list(uris = uri, .token = .token)) |>
+      purrr::pluck("posts", 1L)
+
+    do.call(
+      what = com_atproto_repo_create_record,
+      args = list(
+        repo = get_token()$did,
+        collection = "app.bsky.feed.like",
+        record = list(
+          subject = list(
+            uri = post_info$uri,
+            cid = post_info$cid
+          ),
+          createdAt = as_iso_date(Sys.time()),
+          `$type` = "app.bsky.feed.like"
+        ),
+        .token = .token,
+        .return = "json"
+      ))
+  }))
+}
+
+
+#' @rdname like_skeet
+#' @export
+like_post <- like_skeet

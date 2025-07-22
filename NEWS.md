@@ -1,7 +1,14 @@
-# atrrr (development version)
+# atrrr 0.1.1
+
+* adds functions for direct messages
+* adds function to query starter packs from a user
+* simplifies make_request and make it compatible with future httr2 versions
+
+# atrrr 0.1.0
 
 * fix bug in posting remote images and videos
 * fix issue in auth() (httr2 v1.1.0 related)
+* adds ability to post multiple images in thread (thanks @nerskin!)
 
 # atrrr 0.0.5
 
@@ -12,7 +19,6 @@
 * added new parameters to search_post()
 * improves stability of preview cards in posts
 * improves parsing of actor data
-
 
 # atrrr 0.0.4
 
